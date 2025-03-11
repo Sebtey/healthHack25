@@ -1,6 +1,7 @@
 from torchvision.transforms import transforms
 import torchvision.io as tvio
 import torch
+import io
 
 
 class IModel:
@@ -12,14 +13,17 @@ class IModel:
 
 
 class FineTunedVideoMAE(IModel):
-    def __init__(self):
+    def __init__(self, model):
         super().__init__()
-        self.model = None
+        self.model = model
         self.resizer = transforms.Compose([
             transforms.Resize((224, 224))  # Ensure resolution is correct
         ])
 
     def __transform(self, video):
+
+        video_path = io.BytesIO(video)
+
         video, _, _ = tvio.read_video(video_path, pts_unit='sec', start_pts=0, end_pts=20)
         video = video.to(torch.float32) / 255.0  # Normalize
 
@@ -49,4 +53,6 @@ class FineTunedVideoMAE(IModel):
         pass
 
 
-
+def get_model() -> IModel:
+    torch_model = torch.load("../pretrained_model.pkl")
+    return FineTunedVideoMAE(torch_model)
