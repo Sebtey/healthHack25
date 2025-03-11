@@ -41,6 +41,7 @@ for epoch in range(num_epochs):
 
     print(f"Epoch {epoch+1}, Loss: {running_loss / len(dataloader)}")
 
+torch.save(model, "pretrained_model.pkl")
 
 if __name__ == "__main__":
     pass
