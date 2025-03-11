@@ -1,25 +1,46 @@
-from transformers import VideoMAEImageProcessor, VideoMAEForVideoClassification, TrainingArguments, Trainer
-import numpy as np
 import torch
+import torch.nn as nn
+import torch.optim as optim
+from transformers import VideoMAEForVideoClassification
 
-video = list(np.random.randn(16, 3, 224, 224))
+# Load Pretrained VideoMAE Model
+from machine_learning.dataset_processing import get_dataloader
 
-processor = VideoMAEImageProcessor.from_pretrained("MCG-NJU/videomae-base-finetuned-kinetics")
-model = VideoMAEForVideoClassification.from_pretrained("MCG-NJU/videomae-base-finetuned-kinetics", num_labels=5)
+model = VideoMAEForVideoClassification.from_pretrained("MCG-NJU/videomae-base", num_labels=5)
+print("Loaded model")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
 
-training_args = TrainingArguments(output_dir="models")
+print("Using:", device.type)
 
-inputs = processor(video, return_tensors="pt")
+# Loss function and optimizer
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.AdamW(model.parameters(), lr=5e-5)
 
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=small_train_dataset,
-)
+num_epochs = 10
 
-with torch.no_grad():
-  outputs = model(**inputs)
-  logits = outputs.logits
+dataloader = get_dataloader()
 
-predicted_class_idx = logits.argmax(-1).item()
-print("Predicted class:", model.config.id2label[predicted_class_idx])
+for epoch in range(num_epochs):
+    model.train()
+    running_loss = 0.0
+
+    for videos, labels in dataloader:
+        videos = videos.to(device)  # Shape: (batch_size, C, num_frames, H, W)
+        labels = labels.to(device)
+
+        optimizer.zero_grad()
+
+        outputs = model(videos).logits  # Forward pass
+        loss = criterion(outputs, labels)
+
+        loss.backward()  # Backpropagation
+        optimizer.step()  # Update weights
+
+        running_loss += loss.item()
+
+    print(f"Epoch {epoch+1}, Loss: {running_loss / len(dataloader)}")
+
+
+if __name__ == "__main__":
+    pass

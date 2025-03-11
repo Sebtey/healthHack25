@@ -1,62 +1,76 @@
-import torch
-import torchvision
 import os
-from torchvision.io import read_video
+import torch
+import torchvision.io as io
 from torch.utils.data import Dataset, DataLoader
+from torchvision.transforms import transforms
 
 
 class VideoDataset(Dataset):
-    def __init__(self, root_dir, transform=None):
+    def __init__(self, root_dir, num_frames=16, clip_duration=2.0):
         self.root_dir = root_dir
-        self.transform = transform
-        self.classes = sorted(os.listdir(root_dir))  # Folders are the labels
-        self.class_to_idx = {cls: int(cls) for cls in self.classes}  # Convert to int
-
-        # Collect all video file paths and labels
-        self.video_paths = []
+        self.classes = sorted(os.listdir(root_dir))
+        self.video_clips = []
         self.labels = []
+        self.num_frames = num_frames
+        self.clip_duration = clip_duration
 
-        for cls in self.classes:
-            class_dir = os.path.join(root_dir, cls)
-            for filename in os.listdir(class_dir):
-                if filename.endswith(".mp4"):  # Ensure it's a video file
-                    self.video_paths.append(os.path.join(class_dir, filename))
-                    self.labels.append(self.class_to_idx[cls])
+        for label, class_name in enumerate(self.classes):
+            class_path = os.path.join(root_dir, class_name)
+            for video in os.listdir(class_path):
+                if video.endswith(".mp4"):
+                    video_path = os.path.join(class_path, video)
+                    self.video_clips.append(video_path)
+                    self.labels.append(label)
 
     def __len__(self):
-        return len(self.video_paths)
+        return len(self.video_clips)
 
     def __getitem__(self, idx):
-        video_path = self.video_paths[idx]
+        video_path = self.video_clips[idx]
         label = self.labels[idx]
 
-        # Read video as (T, H, W, C) tensor
-        video, _, _ = read_video(video_path, pts_unit="sec")
+        # Pre-load video and store as tensor
+        video, _, _ = io.read_video(video_path, pts_unit='sec', start_pts=0, end_pts=20)
+        video = video.to(torch.float32) / 255.0  # Normalize
 
-        # Optional transformations
-        if self.transform:
-            video = self.transform(video)
+        # Sample frames
+        total_frames = video.shape[0]
+        if total_frames == 0:
+            raise ValueError(f"{video_path} has 0 frames")
+        if video.shape[-1] != 3:
+            raise ValueError(F"{video_path} has {video.shape[-1]} channels instead of 3")
 
-        return video, label
+        indices = torch.linspace(0, total_frames - 1, self.num_frames).long()
+        frames = video[indices]  # Shape: (num_frames, H, W, C)
+
+        # Convert to (C, H, W) format and resize
+        resize_transform = transforms.Compose([
+            transforms.Resize((224, 224))  # Ensure resolution is correct
+        ])
+
+        frames = [resize_transform(frame.permute(2, 0, 1)) for frame in frames]  # (H, W, C) → (C, H, W)
+
+        # Stack frames into a tensor (C, num_frames, H, W)
+        video_tensor = torch.stack(frames).permute(0, 1, 2, 3)  # Ensure correct ordering
+
+        return video_tensor, label
 
 
-# Usage
-dataset = VideoDataset(root_dir="path_to_dataset")
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),  # Resizing frames
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
 
-import numpy as np
-from torch.utils.data import WeightedRandomSampler
+# Hyperparameters
+batch_size = 4
+num_workers = 4
 
-# Get class distribution
-labels = dataset.labels  # List of all labels in dataset
-class_counts = np.bincount(labels)  # Number of samples per class
-class_weights = 1.0 / class_counts  # Inverse class frequency
 
-# Create weights for each sample
-sample_weights = [class_weights[label] for label in labels]
+def get_dataloader():
+    # Load dataset
+    dataset = VideoDataset(root_dir="dataset")
+    dataloader = DataLoader(dataset, batch_size=8, shuffle=True, num_workers=0, pin_memory=True)
+    print("Loaded dataset with length: ", len(dataset))
+    return dataloader
 
-# Define sampler
-sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
-
-# Create DataLoader with sampler
-balanced_dataloader = DataLoader(dataset, batch_size=4, sampler=sampler, num_workers=4)
 
