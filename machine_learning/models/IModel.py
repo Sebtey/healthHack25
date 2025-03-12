@@ -2,7 +2,7 @@ from torchvision.transforms import transforms
 import torchvision.io as tvio
 import torch
 import io
-
+import torch.nn.functional as F
 
 class IModel:
     def __init__(self):
@@ -34,7 +34,7 @@ class FineTunedVideoMAE(IModel):
         if video.shape[-1] != 3:
             raise ValueError(F"{video_path} has {video.shape[-1]} channels instead of 3")
 
-        indices = torch.linspace(0, total_frames - 1, self.num_frames).long()
+        indices = torch.linspace(0, total_frames - 1, 16).long()
         frames = video[indices]  # Shape: (num_frames, H, W, C)
 
         # Convert to (C, H, W) format and resize
@@ -46,13 +46,18 @@ class FineTunedVideoMAE(IModel):
 
         # Stack frames into a tensor (C, num_frames, H, W)
         video_tensor = torch.stack(frames).permute(0, 1, 2, 3)  # Ensure correct ordering
-
+        video_tensor.unsqueeze(0)
         return video_tensor
 
     def __call__(self, video):
-        pass
+        tensors = self.__transform(video)
+        return F.softmax(self.model(tensors.unsqueeze(0)).logits).detach().cpu().numpy().tolist()[0]
+
 
 
 def get_model() -> IModel:
-    torch_model = torch.load("../pretrained_model.pkl")
+    torch_model = torch.load("machine_learning/pretrained_model.pkl", weights_only=False)
     return FineTunedVideoMAE(torch_model)
+
+if __name__ == "__main__":
+    get_model()

@@ -1,0 +1,1 @@
+from .models.IModel import get_model
