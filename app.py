@@ -20,8 +20,8 @@ if uploaded_file:
     responseJson = requests.post(URL, files = {"file": uploaded_file.read()})
 
     response = responseJson.json()
-    result = []
+    result = {}
     for index, i in enumerate(response["model_Result"]):
-        result.append(f"{mapper[index]}: {i:03f}")
+        result[f"{mapper[index]}"] = f"{i:03f}"
 
     st.write(result)  #TODO retrieve the output value from the corresponding output key of response
